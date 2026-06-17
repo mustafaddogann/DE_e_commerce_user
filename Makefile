@@ -1,78 +1,29 @@
-####################################################################################################################
-# Setup containers to run Airflow
+SHELL := /bin/bash
 
-docker-spin-up:
-	docker compose --env-file env up airflow-init && docker compose --env-file env up --build -d
-
-perms:
-	sudo mkdir -p logs plugins temp dags tests migrations && sudo chmod -R u=rwx,g=rwx,o=rwx logs plugins temp dags tests migrations
-
-up: perms docker-spin-up warehouse-migration
+# Bring up the full stack (Postgres warehouse + Airflow + Metabase).
+up:
+	mkdir -p logs data
+	docker compose --env-file .env up --build -d
 
 down:
-	docker compose down
+	docker compose --env-file .env down
 
-sh:
-	docker exec -ti webserver bash
+logs:
+	docker compose logs -f airflow-scheduler airflow-webserver
 
-####################################################################################################################
-# Testing, auto formatting, type checks, & Lint checks
+# Download the Olist CSVs from Kaggle into ./data.
+# Requires KAGGLE_USERNAME and KAGGLE_KEY in your environment
+# (https://www.kaggle.com/settings → API).
+seed:
+	python3 scripts/download_olist.py
 
-pytest:
-	docker exec webserver pytest -p no:warnings -v /opt/airflow/tests
+# Drop into the warehouse Postgres.
+psql:
+	docker exec -ti olist-warehouse psql -U $${WAREHOUSE_USER:-olist} -d $${WAREHOUSE_DB:-olist}
 
-format:
-	docker exec webserver python -m black -S --line-length 79 .
+# Run dbt locally (requires dbt-postgres in your venv).
+dbt-run:
+	cd dbt && dbt run --profiles-dir . --target dev
 
-isort:
-	docker exec webserver isort .
-
-type:
-	docker exec webserver mypy --ignore-missing-imports /opt/airflow
-
-lint: 
-	docker exec webserver flake8 /opt/airflow/dags
-
-ci: isort format type lint pytest
-
-####################################################################################################################
-# Set up cloud infrastructure
-
-tf-init:
-	terraform -chdir=./terraform init
-
-infra-up:
-	terraform -chdir=./terraform apply
-
-infra-down:
-	terraform -chdir=./terraform destroy
-
-infra-config:
-	terraform -chdir=./terraform output
-
-####################################################################################################################
-# Create tables in Warehouse
-
-db-migration:
-	@read -p "Enter migration name:" migration_name; docker exec webserver yoyo new ./migrations -m "$$migration_name"
-
-warehouse-migration:
-	docker exec webserver yoyo develop --no-config-file --database postgres://sdeuser:sdepassword1234@warehouse:5432/finance ./migrations
-
-warehouse-rollback:
-	docker exec webserver yoyo rollback --no-config-file --database postgres://sdeuser:sdepassword1234@warehouse:5432/finance ./migrations
-
-####################################################################################################################
-# Port forwarding to local machine
-
-cloud-metabase:
-	terraform -chdir=./terraform output -raw private_key > private_key.pem && chmod 600 private_key.pem && ssh -o "IdentitiesOnly yes" -i private_key.pem ubuntu@$$(terraform -chdir=./terraform output -raw ec2_public_dns) -N -f -L 3001:$$(terraform -chdir=./terraform output -raw ec2_public_dns):3000 && open http://localhost:3001 && rm private_key.pem
-
-cloud-airflow:
-	terraform -chdir=./terraform output -raw private_key > private_key.pem && chmod 600 private_key.pem && ssh -o "IdentitiesOnly yes" -i private_key.pem ubuntu@$(terraform -chdir=./terraform output -raw ec2_public_dns) -N -f -L 8081:$(terraform -chdir=./terraform output -raw ec2_public_dns):8080 && open http://localhost:8081 && rm private_key.pem
-
-####################################################################################################################
-# Helpers
-
-ssh-ec2:
-	terraform -chdir=./terraform output -raw private_key > private_key.pem && chmod 600 private_key.pem && ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i private_key.pem ubuntu@$$(terraform -chdir=./terraform output -raw ec2_public_dns) && rm private_key.pem
+dbt-test:
+	cd dbt && dbt test --profiles-dir . --target dev

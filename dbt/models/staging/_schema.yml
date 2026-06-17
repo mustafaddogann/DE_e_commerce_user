@@ -1,0 +1,63 @@
+version: 2
+
+models:
+  - name: stg_customers
+    columns:
+      - name: customer_id
+        tests: [not_null, unique]
+      - name: customer_unique_id
+        tests: [not_null]
+
+  - name: stg_orders
+    columns:
+      - name: order_id
+        tests: [not_null, unique]
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+      - name: order_status
+        tests:
+          - accepted_values:
+              values: [created, approved, processing, invoiced, shipped, delivered, canceled, unavailable]
+
+  - name: stg_order_items
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+      - name: product_id
+        tests: [not_null]
+      - name: seller_id
+        tests: [not_null]
+
+  - name: stg_order_payments
+    columns:
+      - name: order_id
+        tests: [not_null]
+      - name: payment_value
+        tests: [not_null]
+
+  - name: stg_order_reviews
+    columns:
+      - name: review_id
+        tests: [not_null]
+      - name: review_score
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+
+  - name: stg_products
+    columns:
+      - name: product_id
+        tests: [not_null, unique]
+
+  - name: stg_sellers
+    columns:
+      - name: seller_id
+        tests: [not_null, unique]
