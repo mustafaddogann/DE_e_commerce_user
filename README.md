@@ -76,6 +76,8 @@ dbt tests are wired up in `_schema.yml` (uniqueness, not-null, FK relationships,
 
 ## DAG
 
+![Airflow DAG run](docs/images/dag-output.png)
+
 ```
 load_bronze_customers ─┐
 load_bronze_orders ────┤
